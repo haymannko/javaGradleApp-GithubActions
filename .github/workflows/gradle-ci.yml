@@ -1,0 +1,44 @@
+
+
+
+name: Java Gradle CI/CD Pipeline
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew clean build
+
+      - name: Copy JAR to EC2 and Deploy
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          echo "$SSH_KEY" > key.pem
+          chmod 600 key.pem
+          scp -o StrictHostKeyChecking=no -i key.pem build/libs/*.jar $SSH_USER@$SSH_HOST:/tmp/app.jar
+          ssh -o StrictHostKeyChecking=no -i key.pem $SSH_USER@$SSH_HOST "
+            pkill -f 'java -jar' || true
+            nohup java -jar /tmp/app.jar > /tmp/app.log 2>&1 &
+          "
+
+
